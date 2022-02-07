@@ -1,14 +1,15 @@
-# Survey Analysis with NHANES Data
+# Survey Data Analysis in R (Exposure from NHANES)
 
-This course will provide you with an overview for data collection. questionnaire design, and common sampling methods. Then you will learn descriptive statistics, linear regression, logistic regression, and dealing with missing values for survey data. The course will also include a hands-on component using R statistical language to perform survey analysis methods with National Health and Nutrition Examination Survey (NHANES) data.
+A survey could include categorical and/or numerical data collected from a questionnaire or from measurements. Survey data analysis is the process of turning the raw information of your survey into insights. This course will provide you with an overview for data collection, questionnaire design, and common sampling methods. Then we will discuss you will learn descriptive statistics, linear regression, logistic regression, and dealing with missing values for survey data. The course will also include a hands-on component using R statistical language to perform survey data analysis with National Health and Nutrition Examination Survey (NHANES) data.
 
 #### The detailed topics will be covered in this course: 
-- Data Collection and Questionnaire Design
+- Data collection and questionnaire design
 - Statistical Inference 
 - Sampling
 - Graphics
 - Ratios and Linear Regression
 - Categorical Data Regression
+- Test of Association 
 - Missing Data
 
 #### Workshop information
