@@ -175,8 +175,9 @@ BCBB<br>
 <li>Importing NHANES to R</li>
 <li>Sampling</li>
 <li>Simple summary statistics</li>
-<li>Regression Models</li>
+<li>Ratio Estimations and Regression Models</li>
 <li>Tests in contingency tables</li>
+<li>Multiple Imputation</li>
 <li>Graphics</li>
 </ol>
 <div id="importing-nhanes-to-r" class="section level3">
@@ -600,16 +601,120 @@ b</code></pre>
 ##          SE          4.2  1.6  2.2</code></pre>
 </div>
 </div>
-<div id="regression-models" class="section level3">
-<h3>4. Regression Models</h3>
-<p>Generalized linear models, including the linear model, are estimated by svyglm. This has almost the same arguments as glm, the difference being that the data argument to glm is replaced by a design argument to svyglm. Similarly, svycoxph fits Cox models to survey data.</p>
-<p>In this example we use the dclus2 two-stage cluster sample from the California Academic Performance Index, which was created in an earlier example. The syntax and options for svyglm are the same for designs with and without replicate weights.</p>
-<p>The outcome variable is 2000 API, predicted by the proportions of students learning English (ell), receiving subsidized means (means) and having moved to the school within the past year (mobility). This is a linear regression model, so no family argument to svyglm is needed.</p>
-<pre class="r"><code>#summary(svyglm(api00 ~ ell + meals + mobility, design = dclus2))</code></pre>
+<div id="ratio-estimations-and-regression-models" class="section level3">
+<h3>4. Ratio Estimations and Regression Models</h3>
+<div id="ratio-estimation" class="section level4">
+<h4>Ratio Estimation</h4>
+<div id="estimating-ratios" class="section level5">
+<h5>1) Estimating Ratios</h5>
+<p>The function <strong>svyratio()</strong> estimates ratios of population totals. It takes two model-formula arguments, one specifying numerator variables and the other specifying denominator variables, and estimates the ratios for each pair of variables. For example, in the stratified sample of California schools the following code estimates the proportion of students who took the API tests:</p>
+<pre class="r"><code>svyratio(~api.stu,~enroll, dclus1)</code></pre>
+<pre><code>## Ratio estimator: svyratio.survey.design2(~api.stu, ~enroll, dclus1)
+## Ratios=
+##            enroll
+## api.stu 0.8497087
+## SEs=
+##              enroll
+## api.stu 0.008386297</code></pre>
+<p>The true proportion based on the population data is 0.8387, so the estimate is quite accurate.</p>
+</div>
+<div id="ratios-for-subpopulation-estimates" class="section level5">
+<h5>2) Ratios for Subpopulation estimates</h5>
+<p>Suppose that in the artificial fpc data set we want to estimate the mean of x when x&gt;4.</p>
+<pre class="r"><code>data(fpc)
+dfpc&lt;-svydesign(id=~psuid,strat=~stratid,weight=~weight,data=fpc,nest=TRUE)
+dsub&lt;-subset(dfpc,x&gt;4)
+svymean(~x,design=dsub)</code></pre>
+<pre><code>##    mean     SE
+## x 6.195 0.7555</code></pre>
+<p>The subset function constructs a survey design object with information about this subpopulation and svymean computes the mean. The same operation can be done for a set of subpopulations with svyby.</p>
+<pre class="r"><code>svyby(~x,~I(x&gt;4),design=dfpc, svymean)</code></pre>
+<pre><code>##       I(x &gt; 4)        x        se
+## FALSE    FALSE 3.314286 0.3117042
+## TRUE      TRUE 6.195000 0.7555129</code></pre>
+<p>The classical derivation of the domain mean estimator is as a ratio where the numerator is X for observations in the domain and 0 otherwise and the denominator is 1 for observations in the domain and 0 otherwise</p>
+<pre class="r"><code>svyratio(~I(x*(x&gt;4)),~as.numeric(x&gt;4), dfpc)</code></pre>
+<pre><code>## Ratio estimator: svyratio.survey.design2(~I(x * (x &gt; 4)), ~as.numeric(x &gt; 4), 
+##     dfpc)
+## Ratios=
+##                as.numeric(x &gt; 4)
+## I(x * (x &gt; 4))             6.195
+## SEs=
+##                as.numeric(x &gt; 4)
+## I(x * (x &gt; 4))         0.7555129</code></pre>
+<p>More approaches for ratios for Subpopulation estimates: <a href="https://cran.r-project.org/web/packages/survey/vignettes/domain.pdf" class="uri">https://cran.r-project.org/web/packages/survey/vignettes/domain.pdf</a></p>
+</div>
+<div id="ratio-estimators-of-totals" class="section level5">
+<h5>3) Ratio estimators of totals</h5>
+<pre class="r"><code>r &lt;- svyratio(~api.stu, ~enroll, dstrat)
+predict(r, total= 3811472)</code></pre>
+<pre><code>## $total
+##          enroll
+## api.stu 3190038
+## 
+## $se
+##           enroll
+## api.stu 29565.98</code></pre>
+</div>
+</div>
+<div id="regression-models" class="section level4">
+<h4>Regression Models</h4>
+<p>Generalized linear models, including the linear model, are estimated by svyglm.</p>
+<p>In this example we use the dclus2 two-stage cluster sample from the California Academic Performance Index. The syntax and options for svyglm are the same for designs with and without replicate weights.</p>
+<pre class="r"><code>dclus2&lt;-svydesign(id=~dnum+snum, fpc=~fpc1+fpc2, data=apiclus2)</code></pre>
+<p>The outcome variable is 2000 API, predicted by the proportions of students learning English (ell), receiving subsidized meals (meals) and having moved to the school within the past year (mobility). This is a linear regression model, so no family argument to svyglm is needed.</p>
+<pre class="r"><code>summary(svyglm(api00 ~ ell + meals + mobility, design = dclus2))</code></pre>
+<pre><code>## 
+## Call:
+## svyglm(formula = api00 ~ ell + meals + mobility, design = dclus2)
+## 
+## Survey design:
+## svydesign(id = ~dnum + snum, fpc = ~fpc1 + fpc2, data = apiclus2)
+## 
+## Coefficients:
+##             Estimate Std. Error t value Pr(&gt;|t|)    
+## (Intercept) 811.4907    30.2338  26.840   &lt;2e-16 ***
+## ell          -2.0592     1.3798  -1.492    0.144    
+## meals        -1.7772     1.0830  -1.641    0.110    
+## mobility      0.3253     0.6103   0.533    0.597    
+## ---
+## Signif. codes:  0 &#39;***&#39; 0.001 &#39;**&#39; 0.01 &#39;*&#39; 0.05 &#39;.&#39; 0.1 &#39; &#39; 1
+## 
+## (Dispersion parameter for gaussian family taken to be 8363.101)
+## 
+## Number of Fisher Scoring iterations: 2</code></pre>
 <p>A useful property of regression models is that they provide another way to get domain estimates. Suppose we want the mean of api00 for each school type:</p>
-<pre class="r"><code>#summary(svyglm(api00~stype-1, dclus2))</code></pre>
-<pre class="r"><code>#svyby(~api00,~stype,dclus2,svymean, keep.var=TRUE)</code></pre>
+<pre class="r"><code>summary(svyglm(api00~stype-1, dclus2))</code></pre>
+<pre><code>## 
+## Call:
+## svyglm(formula = api00 ~ stype - 1, design = dclus2)
+## 
+## Survey design:
+## svydesign(id = ~dnum + snum, fpc = ~fpc1 + fpc2, data = apiclus2)
+## 
+## Coefficients:
+##        Estimate Std. Error t value Pr(&gt;|t|)    
+## stypeE   692.81      29.93   23.15   &lt;2e-16 ***
+## stypeH   598.34      17.69   33.82   &lt;2e-16 ***
+## stypeM   642.35      45.09   14.25   &lt;2e-16 ***
+## ---
+## Signif. codes:  0 &#39;***&#39; 0.001 &#39;**&#39; 0.01 &#39;*&#39; 0.05 &#39;.&#39; 0.1 &#39; &#39; 1
+## 
+## (Dispersion parameter for gaussian family taken to be 17528.44)
+## 
+## Number of Fisher Scoring iterations: 2</code></pre>
+<pre class="r"><code>svyby(~api00,~stype,dclus2,svymean, keep.var=TRUE)</code></pre>
+<pre><code>##   stype    api00       se
+## E     E 692.8104 29.92660
+## H     H 598.3407 17.69417
+## M     M 642.3520 45.09132</code></pre>
 <p>This equivalence helps in thinking about domain estimators and how they handle more complex designs.</p>
+<p>More resources for logistic regression:</p>
+<ul>
+<li><a href="https://rpubs.com/corey_sparks/577954" class="uri">https://rpubs.com/corey_sparks/577954</a></li>
+<li><a href="https://stats.oarc.ucla.edu/r/seminars/survey-data-analysis-with-r/" class="uri">https://stats.oarc.ucla.edu/r/seminars/survey-data-analysis-with-r/</a></li>
+</ul>
+</div>
 </div>
 <div id="tests-in-contingency-tables" class="section level3">
 <h3>5. Tests in contingency tables</h3>
@@ -633,7 +738,7 @@ b</code></pre>
 ## 
 ## data:  svychisq(~sch.wide + stype, dclus1, statistic = &quot;Chisq&quot;)
 ## X-squared = 11.941, df = 2, p-value = 0.005553</code></pre>
-<p>The other type of test is a Wald test based on the differences between the observed cell counts and those expected under independence (Koch et al, International Statistical Review 43: 59-78). I believe the statistic=“Wald” test is the one used by SUDAAN. Using statistic=“adjWald” reduces the statistic when the number of PSUs is small compared to the number of degrees of freedom. Rao &amp; Thomas (JASA 82:630-636) recommend the adjusted version.</p>
+<p>The other type of test is a Wald test based on the differences between the observed cell counts and those expected under independence (Koch et al, International Statistical Review 43: 59-78). Using statistic=“adjWald” reduces the statistic when the number of PSUs is small compared to the number of degrees of freedom. Rao &amp; Thomas (JASA 82:630-636) recommend the adjusted version.</p>
 <pre class="r"><code>svychisq(~sch.wide+stype, dclus1, statistic=&quot;adjWald&quot;)</code></pre>
 <pre><code>## 
 ##  Design-based Wald test of association
@@ -647,8 +752,74 @@ b</code></pre>
 ## data:  svychisq(~sch.wide + stype, dclus1, statistic = &quot;Wald&quot;)
 ## F = 2.4011, ndf = 2, ddf = 14, p-value = 0.1269</code></pre>
 </div>
+<div id="multiple-imputation" class="section level3">
+<h3>6. Multiple Imputation</h3>
+<p>Here is an example of using a created data set on how to analyze imputed survey data in R with mitools, Ameila and the survey packages.</p>
+<p>First, we start by using the library function to library all of the packages and create the data set with missing data.</p>
+<pre class="r"><code>library(mitools)
+library(Amelia)
+library(survey)
+data = data.frame(a = rnorm(100), b = rnorm(100), w = abs(rnorm(100)))
+data[2:4,1] = NA
+data[8:10, 2] = NA
+head(data, 10)</code></pre>
+<pre><code>##             a           b         w
+## 1   1.9654566  0.02592456 0.6371958
+## 2          NA -1.08587875 0.6791438
+## 3          NA -0.82769685 1.3894021
+## 4          NA  1.01926450 2.5320504
+## 5   1.4450441 -0.24341769 0.4461377
+## 6   0.9387523 -0.36056244 2.0580669
+## 7  -0.1284671 -0.91353127 1.2994650
+## 8  -0.6936507          NA 1.9438674
+## 9   1.0838542          NA 0.4937450
+## 10  0.4456688          NA 1.6517288</code></pre>
+<p>Now we are going to impute the missing values in the example data set, by running the data set through the amelia function setting x equal to the data set and m equal to the number of imputed data sets we desire, five in this example.</p>
+<p>Then we need to grab the imputed data sets from the a.out object we created above, which are located in a.out$imputations, and transform these imputed data sets into an imputation list that the survey package and mitools can read.</p>
+<pre class="r"><code>m &lt;- 5
+a.out &lt;- amelia(x = data, m=m)</code></pre>
+<pre><code>## -- Imputation 1 --
+## 
+##   1  2  3
+## 
+## -- Imputation 2 --
+## 
+##   1  2  3  4  5
+## 
+## -- Imputation 3 --
+## 
+##   1  2  3
+## 
+## -- Imputation 4 --
+## 
+##   1  2  3  4
+## 
+## -- Imputation 5 --
+## 
+##   1  2  3</code></pre>
+<pre class="r"><code>a.out.imp = imputationList(a.out$imputations)</code></pre>
+<p>Next, we can create the survey design object, with the svydesign command. For this data, there is no id so we use the value 1, which indicates now no id value, we set the weights to w, and the data as the imputed data sets that were transformed into an imputation list, a.out.imp.</p>
+<p>Now we can appropriately weight the survey statistics and parameter estimates that we want to analyze. To do this we need to use the with command, starting with the survey design object, designs in this example, and then select the analysis we want. Below we have an analysis extracting the mean for the variable a and a bivariate regression with the imputed data sets and appropriate survey weights.</p>
+<p>Finally, we can combine the results from the analyses, the mean of a and a bivariate regression of a on b in this example, using the MIcombine function in the mitools package to appropriately combine the results from the five imputed data sets into one mean and one set of parameter estimates in this example.</p>
+<pre class="r"><code>designs&lt;-svydesign(id =~ 1, weights =~ w, data=a.out.imp)
+testMeans = MIcombine(with(designs, svymean(~a)))
+testMeans</code></pre>
+<pre><code>## Multiple imputation results:
+##       with(designs, svymean(~a))
+##       MIcombine.default(with(designs, svymean(~a)))
+##     results        se
+## a 0.1190321 0.1049423</code></pre>
+<pre class="r"><code>model1 = with(designs, svyglm(a ~ b)) 
+summary(MIcombine((model1)))</code></pre>
+<pre><code>## Multiple imputation results:
+##       with(designs, svyglm(a ~ b))
+##       MIcombine.default((model1))
+##               results        se      (lower    upper) missInfo
+## (Intercept) 0.1171836 0.1044726 -0.08766211 0.3220293      4 %
+## b           0.0621487 0.1174883 -0.17207792 0.2963753     26 %</code></pre>
+</div>
 <div id="graphics" class="section level3">
-<h3>6. Graphics</h3>
+<h3>7. Graphics</h3>
 <p>There are (at least) three useful strategies for graphing survey data.</p>
 <ol style="list-style-type: decimal">
 <li>Draw a conventional graph and annotate it to indicate sampling weights</li>
@@ -710,6 +881,7 @@ points((2:8)*10, means[7+1:7,3]*100,col=&quot;red&quot;)</code></pre>
 <li>Survey analysis in R: <a href="https://r-survey.r-forge.r-project.org/survey/" class="uri">https://r-survey.r-forge.r-project.org/survey/</a></li>
 <li>Survey Data: Design and Examples: <a href="https://ehsanx.github.io/SPPH504007SurveyData/docs/" class="uri">https://ehsanx.github.io/SPPH504007SurveyData/docs/</a></li>
 <li>Complex Surveys: A Guide to Analysis Using R: <a href="https://www.amazon.com/Complex-Surveys-Guide-Analysis-Using/dp/0470284307" class="uri">https://www.amazon.com/Complex-Surveys-Guide-Analysis-Using/dp/0470284307</a></li>
+<li>Analyzing Missing Data in Surveys: <a href="https://rstudio-pubs-static.s3.amazonaws.com/278191_4285e2382468496e937d895251eafdf9.html" class="uri">https://rstudio-pubs-static.s3.amazonaws.com/278191_4285e2382468496e937d895251eafdf9.html</a></li>
 </ol>
 </div>
 

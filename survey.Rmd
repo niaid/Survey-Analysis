@@ -15,9 +15,10 @@ This is the practical tutorial for the Survey Analysis Training. 7 topics will b
   1. Importing NHANES to R
   2. Sampling
   3. Simple summary statistics
-  4. Regression Models
+  4. Ratio Estimations and Regression Models
   5. Tests in contingency tables
-  6. Graphics
+  6. Multiple Imputation
+  7. Graphics
 
 ### 1. Importing NHANES to R
 
@@ -300,29 +301,84 @@ The major remaining fault in the table is that too many digits are given. We can
 round(100 * b, 1)
 ```
 
-### 4. Regression Models
+### 4. Ratio Estimations and Regression Models
 
-Generalized linear models, including the linear model, are estimated by svyglm. This has almost the same arguments as glm, the difference being that the data argument to glm is replaced by a design argument to svyglm. Similarly, svycoxph fits Cox models to survey data.
+#### Ratio Estimation 
 
-In this example we use the dclus2 two-stage cluster sample from the California Academic Performance Index, which was created in an earlier example. The syntax and options for svyglm are the same for designs with and without replicate weights.
+##### 1) Estimating Ratios
 
-The outcome variable is 2000 API, predicted by the proportions of students learning English (ell), receiving subsidized means (means) and having moved to the school within the past year (mobility). This is a linear regression model, so no family argument to svyglm is needed.
+The function **svyratio()** estimates ratios of population totals. It takes two model-formula arguments, one specifying numerator variables and the other specifying denominator variables, and estimates the ratios for each pair of variables. For example, in the stratified sample of California schools the following code estimates the proportion of students who took the API tests:
 
 ```{r}
-#summary(svyglm(api00 ~ ell + meals + mobility, design = dclus2))
+svyratio(~api.stu,~enroll, dclus1)
+```
+
+The true proportion based on the population data is 0.8387, so the estimate is quite accurate.
+
+##### 2) Ratios for Subpopulation estimates
+
+Suppose that in the artificial fpc data set we want to estimate the mean of x when x>4.
+
+```{r}
+data(fpc)
+dfpc<-svydesign(id=~psuid,strat=~stratid,weight=~weight,data=fpc,nest=TRUE)
+dsub<-subset(dfpc,x>4)
+svymean(~x,design=dsub)
+```
+
+The subset function constructs a survey design object with information about this subpopulation and svymean computes the mean. The same operation can be done for a set of subpopulations with svyby.
+
+```{r}
+svyby(~x,~I(x>4),design=dfpc, svymean)
+```
+
+The classical derivation of the domain mean estimator is as a ratio where the numerator is X for observations in the domain and 0 otherwise and the denominator is 1 for observations in the domain and 0 otherwise
+
+```{r}
+svyratio(~I(x*(x>4)),~as.numeric(x>4), dfpc)
+```
+
+More approaches for ratios for Subpopulation estimates: https://cran.r-project.org/web/packages/survey/vignettes/domain.pdf
+
+##### 3) Ratio estimators of totals
+
+```{r}
+r <- svyratio(~api.stu, ~enroll, dstrat)
+predict(r, total= 3811472)
+```
+
+#### Regression Models 
+
+Generalized linear models, including the linear model, are estimated by svyglm. 
+
+In this example we use the dclus2 two-stage cluster sample from the California Academic Performance Index. The syntax and options for svyglm are the same for designs with and without replicate weights.
+
+```{r}
+dclus2<-svydesign(id=~dnum+snum, fpc=~fpc1+fpc2, data=apiclus2)
+```
+
+The outcome variable is 2000 API, predicted by the proportions of students learning English (ell), receiving subsidized meals (meals) and having moved to the school within the past year (mobility). This is a linear regression model, so no family argument to svyglm is needed.
+
+```{r}
+summary(svyglm(api00 ~ ell + meals + mobility, design = dclus2))
 ```
 
 A useful property of regression models is that they provide another way to get domain estimates. Suppose we want the mean of api00 for each school type:
 
 ```{r}
-#summary(svyglm(api00~stype-1, dclus2))
+summary(svyglm(api00~stype-1, dclus2))
 ```
 
 ```{r}
-#svyby(~api00,~stype,dclus2,svymean, keep.var=TRUE)
+svyby(~api00,~stype,dclus2,svymean, keep.var=TRUE)
 ```
 
 This equivalence helps in thinking about domain estimators and how they handle more complex designs.
+
+More resources for logistic regression: 
+
+- https://rpubs.com/corey_sparks/577954
+- https://stats.oarc.ucla.edu/r/seminars/survey-data-analysis-with-r/
 
 ### 5. Tests in contingency tables
 
@@ -344,7 +400,7 @@ svychisq(~sch.wide + stype, dclus1)
 svychisq(~sch.wide + stype, dclus1, statistic = "Chisq")
 ```
 
-The other type of test is a Wald test based on the differences between the observed cell counts and those expected under independence (Koch et al, International Statistical Review 43: 59-78). I believe the statistic="Wald" test is the one used by SUDAAN. Using statistic="adjWald" reduces the statistic when the number of PSUs is small compared to the number of degrees of freedom. Rao & Thomas (JASA 82:630-636) recommend the adjusted version.
+The other type of test is a Wald test based on the differences between the observed cell counts and those expected under independence (Koch et al, International Statistical Review 43: 59-78). Using statistic="adjWald" reduces the statistic when the number of PSUs is small compared to the number of degrees of freedom. Rao & Thomas (JASA 82:630-636) recommend the adjusted version.
 
 ```{r}
 svychisq(~sch.wide+stype, dclus1, statistic="adjWald")
@@ -354,7 +410,52 @@ svychisq(~sch.wide+stype, dclus1, statistic="adjWald")
 svychisq(~sch.wide+stype, dclus1, statistic="Wald")
 ```
 
-### 6. Graphics
+### 6. Multiple Imputation
+
+Here is an example of using a created data set on how to analyze imputed survey data in R with mitools, Ameila and the survey packages.
+
+First, we start by using the library function to library all of the packages and create the data set with missing data.
+
+```{r}
+library(mitools)
+library(Amelia)
+library(survey)
+data = data.frame(a = rnorm(100), b = rnorm(100), w = abs(rnorm(100)))
+data[2:4,1] = NA
+data[8:10, 2] = NA
+head(data, 10)
+```
+Now we are going to impute the missing values in the example data set, by running the data set through the amelia function setting x equal to the data set and m equal to the number of imputed data sets we desire, five in this example.
+
+Then we need to grab the imputed data sets from the a.out object we created above, which are located in a.out$imputations, and transform these imputed data sets into an imputation list that the survey package and mitools can read.
+
+```{r}
+m <- 5
+a.out <- amelia(x = data, m=m)
+```
+
+```{r}
+a.out.imp = imputationList(a.out$imputations)
+```
+
+Next, we can create the survey design object, with the svydesign command. For this data, there is no id so we use the value 1, which indicates now no id value, we set the weights to w, and the data as the imputed data sets that were transformed into an imputation list, a.out.imp.
+
+Now we can appropriately weight the survey statistics and parameter estimates that we want to analyze. To do this we need to use the with command, starting with the survey design object, designs in this example, and then select the analysis we want. Below we have an analysis extracting the mean for the variable a and a bivariate regression with the imputed data sets and appropriate survey weights.
+
+Finally, we can combine the results from the analyses, the mean of a and a bivariate regression of a on b in this example, using the MIcombine function in the mitools package to appropriately combine the results from the five imputed data sets into one mean and one set of parameter estimates in this example.
+
+```{r}
+designs<-svydesign(id =~ 1, weights =~ w, data=a.out.imp)
+testMeans = MIcombine(with(designs, svymean(~a)))
+testMeans
+```
+
+```{r}
+model1 = with(designs, svyglm(a ~ b)) 
+summary(MIcombine((model1)))
+```
+
+### 7. Graphics
 
 There are (at least) three useful strategies for graphing survey data.
 
@@ -435,3 +536,4 @@ points((2:8)*10, means[7+1:7,3]*100,col="red")
 1. Survey analysis in R: https://r-survey.r-forge.r-project.org/survey/
 2. Survey Data: Design and Examples: https://ehsanx.github.io/SPPH504007SurveyData/docs/
 3. Complex Surveys: A Guide to Analysis Using R: https://www.amazon.com/Complex-Surveys-Guide-Analysis-Using/dp/0470284307
+4. Analyzing Missing Data in Surveys: https://rstudio-pubs-static.s3.amazonaws.com/278191_4285e2382468496e937d895251eafdf9.html
